@@ -1,3 +1,73 @@
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: mysql
+#   namespace: roboshop
+#   labels:
+#     project: roboshop
+#     tier: db
+#     component: mysql
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       project: roboshop
+#       tier: db
+#       component: mysql
+#   # Pod
+#   template:
+#     metadata:
+#       labels:
+#         project: roboshop
+#         tier: db
+#         component: mysql
+#     spec:
+#       serviceAccountName: roboshop-mysql
+#       initContainers:
+#       - name: secret-reader
+#         image: amazon/aws-cli
+#         command:
+#         - sh
+#         - -c
+#         - |
+#             aws secretsmanager get-secret-value --secret-id \
+#             roboshop/mysql --query SecretString \
+#             --output text | jq -r '.mysql_root_password' > /secrets/mysql-secret.txt
+#             echo "Secret fetched successfully"
+#             cat /secrets/mysql-secret.txt # just for testing, we should not do this
+#         volumeMounts:
+#         - name: mysql-secret
+#           mountPath: /secrets
+#       containers:
+#       - name: mysql
+#         image: pandu15/mysql:5.0.0
+#         args: ["--mysql-native-password=ON"]
+#         volumeMounts:
+#         - name: mysql-secret
+#           mountPath: /secrets
+#       volumes:
+#       - name: mysql-secret
+#         emptyDir: {}
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: mysql
+#   namespace: roboshop
+#   labels:
+#     project: roboshop
+#     tier: db
+#     component: mysql
+# spec:
+#   selector:
+#     project: roboshop
+#     tier: db
+#     component: mysql
+#   ports:
+#     - protocol: TCP
+#       port: 3306 # service port
+#       targetPort: 3306 # container port
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,63 +77,73 @@ metadata:
     project: roboshop
     tier: db
     component: mysql
+
 spec:
   replicas: 1
+
   selector:
     matchLabels:
       project: roboshop
       tier: db
       component: mysql
-  # Pod
+
   template:
     metadata:
       labels:
         project: roboshop
         tier: db
         component: mysql
+
     spec:
       serviceAccountName: roboshop-mysql
+
       initContainers:
-      - name: secret-reader
-        image: amazon/aws-cli
-        command:
-        - sh
-        - -c
-        - |
-            aws secretsmanager get-secret-value --secret-id \
-            roboshop/mysql --query SecretString \
-            --output text | jq -r '.mysql_root_password' > /secrets/mysql-secret.txt
-            echo "Secret fetched successfully"
-            cat /secrets/mysql-secret.txt # just for testing, we should not do this
-        volumeMounts:
-        - name: mysql-secret
-          mountPath: /secrets
+        - name: secret-reader
+          image: amazon/aws-cli:latest
+
+          command:
+            - /bin/sh
+            - -c
+
+          args:
+            - |
+              echo "Fetching MySQL password..."
+
+              aws secretsmanager get-secret-value \
+                --secret-id roboshop/mysql \
+                --query SecretString \
+                --output text | \
+                jq -r '.mysql_root_password' > /secrets/mysql-secret.txt
+
+              if [ ! -s /secrets/mysql-secret.txt ]; then
+                echo "Password file is empty!"
+                exit 1
+              fi
+
+              echo "Secret fetched successfully"
+
+              # Remove this line after testing.
+              cat /secrets/mysql-secret.txt
+
+          volumeMounts:
+            - name: mysql-secret
+              mountPath: /secrets
+
       containers:
-      - name: mysql
-        image: pandu15/mysql:5.0.0
-        args: ["--mysql-native-password=ON"]
-        volumeMounts:
-        - name: mysql-secret
-          mountPath: /secrets
+        - name: mysql
+          image: pandu15/mysql:5.0.0
+
+          args:
+            - "--mysql-native-password=ON"
+
+          volumeMounts:
+            - name: mysql-secret
+              mountPath: /secrets
+
+          ports:
+            - containerPort: 3306
+              protocol: TCP
+
       volumes:
-      - name: mysql-secret
-        emptyDir: {}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mysql
-  namespace: roboshop
-  labels:
-    project: roboshop
-    tier: db
-    component: mysql
-spec:
-  selector:
-    project: roboshop
-    tier: db
-    component: mysql
-  ports:
-    - protocol: TCP
-      port: 3306 # service port
-      targetPort: 3306 # container port
+        - name: mysql-secret
+          emptyDir: {}
