@@ -14,6 +14,7 @@ spec:
       project: roboshop
       tier: db
       component: mysql
+  # Pod
   template:
     metadata:
       labels:
@@ -22,27 +23,26 @@ spec:
         component: mysql
     spec:
       serviceAccountName: roboshop-mysql
-      initcontainers:
+      initContainers:
       - name: secret-reader
-        image: amazon/aws-cli 
+        image: amazon/aws-cli
         command:
         - sh
         - -c
         - |
-            aws secretsmanager get-secret-value \
-            --secret-id roboshop/mysql \
-            --query SecretString \
+            aws secretsmanager get-secret-value --secret-id \
+            roboshop/dev/mysql_root_password --query SecretString \
             --output text | jq -r '.mysql_root_password' > /secrets/mysql-secret.txt
             echo "Secret fetched successfully"
-            cat /secrets/mysql-secret.txt
-        volumemounts:
+            cat /secrets/mysql-secret.txt # just for testing, we should not do this
+        volumeMounts:
         - name: mysql-secret
           mountPath: /secrets
       containers:
       - name: mysql
         image: pandu15/mysql:5.0.0
         args: ["--mysql-native-password=ON"]
-        volumemounts:
+        volumeMounts:
         - name: mysql-secret
           mountPath: /secrets
       volumes:
@@ -54,17 +54,16 @@ kind: Service
 metadata:
   name: mysql
   namespace: roboshop
-  # servicer labels
   labels:
     project: roboshop
-    environment: dev
+    tier: db
+    component: mysql
 spec:
-# service uses the below labels to select the pods
   selector:
     project: roboshop
     tier: db
     component: mysql
   ports:
-   - protocol: TCP
-     port: 3306 # service port
-     targetPort: 3306 # container port
+    - protocol: TCP
+      port: 3306 # service port
+      targetPort: 3306 # container port
